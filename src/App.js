@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from "uuid";
 
 const App = () => {
   const [elements, setElements] = useState([]);
-  const [isManualMode, setIsManualMode] = useState(false); // Toggle manual mode
-  const [selectedColor, setSelectedColor] = useState(null); // Track selected color
+  const [isManualMode, setIsManualMode] = useState(false);
+  const [selectedColor, setSelectedColor] = useState(null);
   const width = 1400;
   const height = 700;
   const distanceThreshold = 100;
@@ -25,8 +25,8 @@ const App = () => {
   const handleCanvasClick = (e) => {
     if (isManualMode && selectedColor) {
       const rect = e.target.getBoundingClientRect();
-      const x = e.clientX - rect.left; // Calculate X position relative to canvas
-      const y = e.clientY - rect.top; // Calculate Y position relative to canvas
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
       addPoint(selectedColor, x, y);
     }
   };
@@ -34,10 +34,10 @@ const App = () => {
   // Toggle manual mode and show color selection
   const toggleManualMode = () => {
     setIsManualMode((prev) => !prev);
-    setSelectedColor(null); // Reset selected color when toggling
+    setSelectedColor(null);
   };
 
-  // Cluster points (same as before)
+  // Cluster points
   const clusterElements = useCallback(() => {
     const points = elements.filter((el) => el.type === "point");
     const clusters = [];
@@ -77,6 +77,7 @@ const App = () => {
             x: clusterX,
             y: clusterY,
             colorCounts,
+            total: cluster.length,
           });
         } else {
           clusters.push(point);
@@ -102,14 +103,49 @@ const App = () => {
     );
   };
 
-  // Format color counts into a string like "1R 2Y 2G"
-  const formatColorCounts = (colorCounts) => {
-    return Object.entries(colorCounts)
-      .map(([color, count]) => {
-        const colorCode = color[0].toUpperCase();
-        return `${count}${colorCode}`;
-      })
-      .join(" ");
+  // Generate SVG for donut chart
+  const renderDonutChart = (colorCounts, total) => {
+    const colors = Object.keys(colorCounts);
+    const percentages = colors.map(
+      (color) => (colorCounts[color] / total) * 100
+    );
+
+    let offset = 0;
+    return (
+      <svg width="50" height="50" viewBox="0 0 50 50">
+        {percentages.map((percentage, index) => {
+          const color = colors[index];
+          const strokeDasharray = `${percentage} ${100 - percentage}`;
+          const strokeDashoffset = -offset;
+          offset += percentage;
+
+          return (
+            <circle
+              key={color}
+              cx="25"
+              cy="25"
+              r="20"
+              fill="none"
+              stroke={color}
+              strokeWidth="10"
+              strokeDasharray={strokeDasharray}
+              strokeDashoffset={strokeDashoffset}
+            />
+          );
+        })}
+        <text
+          x="50%"
+          y="50%"
+          textAnchor="middle"
+          dy=".3em"
+          fontSize="12"
+          fill="#000"
+          fontWeight="bold"
+        >
+          {total}
+        </text>
+      </svg>
+    );
   };
 
   return (
@@ -193,29 +229,21 @@ const App = () => {
               <div
                 key={element.id}
                 onClick={(e) => {
-                  e.stopPropagation(); // Prevent event from bubbling up to the canvas
+                  e.stopPropagation();
                   handleClusterClick(element.id);
                 }}
                 style={{
                   position: "absolute",
-                  left: element.x - 40,
-                  top: element.y - 20,
-                  width: "80px",
-                  height: "40px",
-                  borderRadius: "10px",
-                  backgroundColor: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  left: element.x - 25,
+                  top: element.y - 25,
+                  width: "50px",
+                  height: "50px",
                   cursor: "pointer",
-                  color: "#000",
-                  fontWeight: "bold",
-                  fontSize: "14px",
-                  padding: "5px",
-                  textAlign: "center",
+                  backgroundColor: "white",
+                  borderRadius: "50%",
                 }}
               >
-                {formatColorCounts(element.colorCounts)}
+                {renderDonutChart(element.colorCounts, element.total)}
               </div>
             );
           }
