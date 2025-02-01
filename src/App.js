@@ -7,6 +7,7 @@ const App = () => {
   const height = 700;
   const distanceThreshold = 100;
 
+  // Add a new point with a random position
   const addPoint = (color) => {
     const newPoint = {
       id: uuidv4(),
@@ -18,6 +19,7 @@ const App = () => {
     setElements((prev) => [...prev, newPoint]);
   };
 
+  // Cluster points based on proximity
   const clusterElements = useCallback(() => {
     const points = elements.filter((el) => el.type === "point");
     const clusters = [];
@@ -28,6 +30,7 @@ const App = () => {
         visited.add(point.id);
         const cluster = [point];
 
+        // Find all nearby points within the threshold
         points.forEach((otherPoint, j) => {
           if (i !== j && !visited.has(otherPoint.id)) {
             const dx = point.x - otherPoint.x;
@@ -39,20 +42,28 @@ const App = () => {
           }
         });
 
+        // Create a cluster if there are multiple points
         if (cluster.length > 1) {
+          const colorCounts = cluster.reduce((acc, p) => {
+            acc[p.color] = (acc[p.color] || 0) + 1;
+            return acc;
+          }, {});
+
           const clusterX =
             cluster.reduce((sum, p) => sum + p.x, 0) / cluster.length;
           const clusterY =
             cluster.reduce((sum, p) => sum + p.y, 0) / cluster.length;
+
           clusters.push({
             id: uuidv4(),
             type: "cluster",
             points: cluster,
             x: clusterX,
             y: clusterY,
-            count: cluster.length,
+            colorCounts, // Store color counts for display
           });
         } else {
+          // Keep single points as they are
           clusters.push(point);
         }
       }
@@ -61,6 +72,7 @@ const App = () => {
     setElements(clusters);
   }, [elements]);
 
+  // Handle cluster click to expand it back into individual points
   const handleClusterClick = (clusterId) => {
     setElements((prev) =>
       prev.flatMap((el) => {
@@ -75,14 +87,27 @@ const App = () => {
     );
   };
 
+  // Format color counts into a string like "1R 2Y 2G"
+  const formatColorCounts = (colorCounts) => {
+    return Object.entries(colorCounts)
+      .map(([color, count]) => {
+        const colorCode = color[0].toUpperCase(); // Get first letter of color
+        return `${count}${colorCode}`;
+      })
+      .join(" "); // Join with spaces
+  };
+
   return (
     <div>
+      {/* Buttons to add points and cluster them */}
       <div style={{ padding: "20px" }}>
         <button onClick={() => addPoint("red")}>Add Red Point</button>
         <button onClick={() => addPoint("yellow")}>Add Yellow Point</button>
         <button onClick={() => addPoint("green")}>Add Green Point</button>
         <button onClick={clusterElements}>Cluster Points</button>
       </div>
+
+      {/* Container for points and clusters */}
       <div
         style={{
           position: "relative",
@@ -101,11 +126,11 @@ const App = () => {
                 onClick={() => handleClusterClick(element.id)}
                 style={{
                   position: "absolute",
-                  left: element.x - 15,
-                  top: element.y - 15,
-                  width: "50px",
-                  height: "50px",
-                  borderRadius: "50%",
+                  left: element.x - 40, // Center the cluster
+                  top: element.y - 20,
+                  width: "80px", // Adjust size for text
+                  height: "40px",
+                  borderRadius: "10px",
                   backgroundColor: "#fff",
                   display: "flex",
                   alignItems: "center",
@@ -113,12 +138,16 @@ const App = () => {
                   cursor: "pointer",
                   color: "#000",
                   fontWeight: "bold",
+                  fontSize: "14px",
+                  padding: "5px",
+                  textAlign: "center",
                 }}
               >
-                {element.count}
+                {formatColorCounts(element.colorCounts)}
               </div>
             );
           }
+          // Render individual points
           return (
             <div
               key={element.id}
