@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 const App = () => {
@@ -10,79 +10,100 @@ const App = () => {
   const height = 700;
   const distanceThreshold = 100;
   const baseGridSize = 50;
+  const clusterThreshold = 0.8;
 
-  // Add a point with zoom-adjusted coordinates
-  const addPoint = (color, x, y) => {
-    const newPoint = {
-      id: uuidv4(),
-      type: "point",
-      x: x / zoomLevel, // Store original coordinates
-      y: y / zoomLevel,
-      color,
-    };
-    setElements((prev) => [...prev, newPoint]);
-  };
+  // Stable clusterElements function
+  const clusterElements = useCallback(() => {
+    setElements((prev) => {
+      const points = prev.filter((el) => el.type === "point");
+      const clusters = [];
+      const visited = new Set();
 
-  const handleCanvasClick = (e) => {
-    if (isManualMode && selectedColor && e.target === e.currentTarget) {
-      const rect = e.target.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      addPoint(selectedColor, x, y);
+      points.forEach((point, i) => {
+        if (!visited.has(point.id)) {
+          visited.add(point.id);
+          const cluster = [point];
+
+          points.forEach((otherPoint, j) => {
+            if (i !== j && !visited.has(otherPoint.id)) {
+              const dx = point.x - otherPoint.x;
+              const dy = point.y - otherPoint.y;
+              if (Math.sqrt(dx * dx + dy * dy) <= distanceThreshold) {
+                cluster.push(otherPoint);
+                visited.add(otherPoint.id);
+              }
+            }
+          });
+
+          if (cluster.length > 1) {
+            const colorCounts = cluster.reduce((acc, p) => {
+              acc[p.color] = (acc[p.color] || 0) + 1;
+              return acc;
+            }, {});
+
+            clusters.push({
+              id: uuidv4(),
+              type: "cluster",
+              points: cluster,
+              x: cluster.reduce((sum, p) => sum + p.x, 0) / cluster.length,
+              y: cluster.reduce((sum, p) => sum + p.y, 0) / cluster.length,
+              colorCounts,
+              total: cluster.length,
+            });
+          } else {
+            clusters.push(point);
+          }
+        }
+      });
+
+      return [...clusters, ...prev.filter((el) => el.type === "cluster")];
+    });
+  }, [distanceThreshold]); // Add any dependencies here
+
+  // Automatic clustering/declustering effect
+  useEffect(() => {
+    if (zoomLevel <= clusterThreshold) {
+      clusterElements();
+    } else {
+      setElements((prev) =>
+        prev.flatMap((el) => (el.type === "cluster" ? el.points : el))
+      );
     }
-  };
+  }, [zoomLevel, clusterElements, clusterThreshold]); // Add clusterElements to dependencies
 
-  const toggleManualMode = () => {
+  // Rest of the code remains the same
+  const addPoint = useCallback(
+    (color, x, y) => {
+      const newPoint = {
+        id: uuidv4(),
+        type: "point",
+        x: x / zoomLevel,
+        y: y / zoomLevel,
+        color,
+      };
+      setElements((prev) => [...prev, newPoint]);
+    },
+    [zoomLevel]
+  );
+
+  const handleCanvasClick = useCallback(
+    (e) => {
+      if (isManualMode && selectedColor && e.target === e.currentTarget) {
+        const rect = e.target.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        addPoint(selectedColor, x, y);
+      }
+    },
+    [isManualMode, selectedColor, addPoint]
+  );
+
+  const toggleManualMode = useCallback(() => {
     setIsManualMode((prev) => !prev);
     setSelectedColor(null);
-  };
+  }, []);
 
-  const clusterElements = useCallback(() => {
-    const points = elements.filter((el) => el.type === "point");
-    const clusters = [];
-    const visited = new Set();
-
-    points.forEach((point, i) => {
-      if (!visited.has(point.id)) {
-        visited.add(point.id);
-        const cluster = [point];
-
-        points.forEach((otherPoint, j) => {
-          if (i !== j && !visited.has(otherPoint.id)) {
-            const dx = point.x - otherPoint.x;
-            const dy = point.y - otherPoint.y;
-            if (Math.sqrt(dx * dx + dy * dy) <= distanceThreshold) {
-              cluster.push(otherPoint);
-              visited.add(otherPoint.id);
-            }
-          }
-        });
-
-        if (cluster.length > 1) {
-          const colorCounts = cluster.reduce((acc, p) => {
-            acc[p.color] = (acc[p.color] || 0) + 1;
-            return acc;
-          }, {});
-
-          clusters.push({
-            id: uuidv4(),
-            type: "cluster",
-            points: cluster,
-            x: cluster.reduce((sum, p) => sum + p.x, 0) / cluster.length,
-            y: cluster.reduce((sum, p) => sum + p.y, 0) / cluster.length,
-            colorCounts,
-            total: cluster.length,
-          });
-        } else {
-          clusters.push(point);
-        }
-      }
-    });
-
-    setElements(clusters);
-  }, [elements]);
-
-  const handleClusterClick = (clusterId) => {
+  const handleClusterClick = useCallback((clusterId) => {
     setElements((prev) =>
       prev.flatMap((el) =>
         el.type === "cluster" && el.id === clusterId
@@ -90,45 +111,54 @@ const App = () => {
           : el
       )
     );
-  };
+  }, []);
 
-  const renderDonutChart = (colorCounts, total) => (
-    <svg width="50" height="50" viewBox="0 0 50 50">
-      {Object.entries(colorCounts).reduce((acc, [color, count], i, arr) => {
-        const percentage = (count / total) * 100;
-        const offset = arr
-          .slice(0, i)
-          .reduce((sum, [_, c]) => sum + (c / total) * 100, 0);
-        return [
-          ...acc,
-          <circle
-            key={color}
-            cx="25"
-            cy="25"
-            r="20"
-            fill="none"
-            stroke={color}
-            strokeWidth="10"
-            strokeDasharray={`${percentage} ${100 - percentage}`}
-            strokeDashoffset={-offset}
-          />,
-        ];
-      }, [])}
-      <text
-        x="50%"
-        y="50%"
-        textAnchor="middle"
-        dy=".3em"
-        fontSize="12"
-        fontWeight="bold"
-      >
-        {total}
-      </text>
-    </svg>
+  const renderDonutChart = useCallback(
+    (colorCounts, total) => (
+      <svg width="50" height="50" viewBox="0 0 50 50">
+        {Object.entries(colorCounts).reduce((acc, [color, count], i, arr) => {
+          const percentage = (count / total) * 100;
+          const offset = arr
+            .slice(0, i)
+            .reduce((sum, [_, c]) => sum + (c / total) * 100, 0);
+          return [
+            ...acc,
+            <circle
+              key={color}
+              cx="25"
+              cy="25"
+              r="20"
+              fill="none"
+              stroke={color}
+              strokeWidth="10"
+              strokeDasharray={`${percentage} ${100 - percentage}`}
+              strokeDashoffset={-offset}
+            />,
+          ];
+        }, [])}
+        <text
+          x="50%"
+          y="50%"
+          textAnchor="middle"
+          dy=".3em"
+          fontSize="12"
+          fontWeight="bold"
+        >
+          {total}
+        </text>
+      </svg>
+    ),
+    []
   );
 
-  const handleZoomIn = () => setZoomLevel((prev) => Math.min(prev + 0.1, 2));
-  const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 0.1, 0.5));
+  const handleZoomIn = useCallback(
+    () => setZoomLevel((prev) => Math.min(prev + 0.1, 2)),
+    []
+  );
+  const handleZoomOut = useCallback(
+    () => setZoomLevel((prev) => Math.max(prev - 0.1, 0.5)),
+    []
+  );
 
   return (
     <div>
