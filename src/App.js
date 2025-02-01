@@ -24,10 +24,13 @@ const App = () => {
   // Handle canvas click for manual point placement
   const handleCanvasClick = (e) => {
     if (isManualMode && selectedColor) {
-      const rect = e.target.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      addPoint(selectedColor, x, y);
+      // Check if the click is on the canvas itself (not on a point or cluster)
+      if (e.target === e.currentTarget) {
+        const rect = e.target.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        addPoint(selectedColor, x, y);
+      }
     }
   };
 
@@ -239,8 +242,6 @@ const App = () => {
                   width: "50px",
                   height: "50px",
                   cursor: "pointer",
-                  backgroundColor: "white",
-                  borderRadius: "50%",
                 }}
               >
                 {renderDonutChart(element.colorCounts, element.total)}
@@ -250,6 +251,7 @@ const App = () => {
           return (
             <div
               key={element.id}
+              onClick={(e) => e.stopPropagation()} // Stop propagation for points
               style={{
                 position: "absolute",
                 left: element.x - 5,
