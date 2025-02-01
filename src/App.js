@@ -5,42 +5,38 @@ const App = () => {
   const [elements, setElements] = useState([]);
   const [isManualMode, setIsManualMode] = useState(false);
   const [selectedColor, setSelectedColor] = useState(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const width = 1400;
   const height = 700;
   const distanceThreshold = 100;
+  const baseGridSize = 50;
 
-  // Add a point at a specific position
+  // Add a point with zoom-adjusted coordinates
   const addPoint = (color, x, y) => {
     const newPoint = {
       id: uuidv4(),
       type: "point",
-      x,
-      y,
+      x: x / zoomLevel, // Store original coordinates
+      y: y / zoomLevel,
       color,
     };
     setElements((prev) => [...prev, newPoint]);
   };
 
-  // Handle canvas click for manual point placement
   const handleCanvasClick = (e) => {
-    if (isManualMode && selectedColor) {
-      // Check if the click is on the canvas itself (not on a point or cluster)
-      if (e.target === e.currentTarget) {
-        const rect = e.target.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        addPoint(selectedColor, x, y);
-      }
+    if (isManualMode && selectedColor && e.target === e.currentTarget) {
+      const rect = e.target.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      addPoint(selectedColor, x, y);
     }
   };
 
-  // Toggle manual mode and show color selection
   const toggleManualMode = () => {
     setIsManualMode((prev) => !prev);
     setSelectedColor(null);
   };
 
-  // Cluster points
   const clusterElements = useCallback(() => {
     const points = elements.filter((el) => el.type === "point");
     const clusters = [];
@@ -68,17 +64,12 @@ const App = () => {
             return acc;
           }, {});
 
-          const clusterX =
-            cluster.reduce((sum, p) => sum + p.x, 0) / cluster.length;
-          const clusterY =
-            cluster.reduce((sum, p) => sum + p.y, 0) / cluster.length;
-
           clusters.push({
             id: uuidv4(),
             type: "cluster",
             points: cluster,
-            x: clusterX,
-            y: clusterY,
+            x: cluster.reduce((sum, p) => sum + p.x, 0) / cluster.length,
+            y: cluster.reduce((sum, p) => sum + p.y, 0) / cluster.length,
             colorCounts,
             total: cluster.length,
           });
@@ -91,98 +82,86 @@ const App = () => {
     setElements(clusters);
   }, [elements]);
 
-  // Handle cluster click to expand it back into individual points
   const handleClusterClick = (clusterId) => {
     setElements((prev) =>
-      prev.flatMap((el) => {
-        if (el.type === "cluster" && el.id === clusterId) {
-          return el.points.map((point) => ({
-            ...point,
-            type: "point",
-          }));
-        }
-        return el;
-      })
+      prev.flatMap((el) =>
+        el.type === "cluster" && el.id === clusterId
+          ? el.points.map((p) => ({ ...p, type: "point" }))
+          : el
+      )
     );
   };
 
-  // Generate SVG for donut chart
-  const renderDonutChart = (colorCounts, total) => {
-    const colors = Object.keys(colorCounts);
-    const percentages = colors.map(
-      (color) => (colorCounts[color] / total) * 100
-    );
+  const renderDonutChart = (colorCounts, total) => (
+    <svg width="50" height="50" viewBox="0 0 50 50">
+      {Object.entries(colorCounts).reduce((acc, [color, count], i, arr) => {
+        const percentage = (count / total) * 100;
+        const offset = arr
+          .slice(0, i)
+          .reduce((sum, [_, c]) => sum + (c / total) * 100, 0);
+        return [
+          ...acc,
+          <circle
+            key={color}
+            cx="25"
+            cy="25"
+            r="20"
+            fill="none"
+            stroke={color}
+            strokeWidth="10"
+            strokeDasharray={`${percentage} ${100 - percentage}`}
+            strokeDashoffset={-offset}
+          />,
+        ];
+      }, [])}
+      <text
+        x="50%"
+        y="50%"
+        textAnchor="middle"
+        dy=".3em"
+        fontSize="12"
+        fontWeight="bold"
+      >
+        {total}
+      </text>
+    </svg>
+  );
 
-    let offset = 0;
-    return (
-      <svg width="50" height="50" viewBox="0 0 50 50">
-        {percentages.map((percentage, index) => {
-          const color = colors[index];
-          const strokeDasharray = `${percentage} ${100 - percentage}`;
-          const strokeDashoffset = -offset;
-          offset += percentage;
-
-          return (
-            <circle
-              key={color}
-              cx="25"
-              cy="25"
-              r="20"
-              fill="none"
-              stroke={color}
-              strokeWidth="10"
-              strokeDasharray={strokeDasharray}
-              strokeDashoffset={strokeDashoffset}
-            />
-          );
-        })}
-        <text
-          x="50%"
-          y="50%"
-          textAnchor="middle"
-          dy=".3em"
-          fontSize="12"
-          fill="#000"
-          fontWeight="bold"
-        >
-          {total}
-        </text>
-      </svg>
-    );
-  };
+  const handleZoomIn = () => setZoomLevel((prev) => Math.min(prev + 0.1, 2));
+  const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 0.1, 0.5));
 
   return (
     <div>
-      {/* Buttons to add points and cluster them */}
       <div style={{ padding: "20px" }}>
         <button
           onClick={() =>
             addPoint("red", Math.random() * width, Math.random() * height)
           }
         >
-          Add Random Red Point
+          Add Random Red
         </button>
         <button
           onClick={() =>
             addPoint("yellow", Math.random() * width, Math.random() * height)
           }
         >
-          Add Random Yellow Point
+          Add Random Yellow
         </button>
         <button
           onClick={() =>
             addPoint("green", Math.random() * width, Math.random() * height)
           }
         >
-          Add Random Green Point
+          Add Random Green
         </button>
         <button onClick={clusterElements}>Cluster Points</button>
         <button onClick={toggleManualMode}>
-          {isManualMode ? "Cancel Manual Mode" : "Add Points Manually"}
+          {isManualMode ? "Cancel Manual" : "Add Manually"}
         </button>
+        <button onClick={handleZoomIn}>Zoom In (+)</button>
+        <button onClick={handleZoomOut}>Zoom Out (-)</button>
       </div>
 
-      {/* Color selection for manual mode */}
       {isManualMode && (
         <div
           style={{
@@ -192,29 +171,23 @@ const App = () => {
             width: "200px",
           }}
         >
-          <p>Select a color:</p>
-          <button
-            style={{ backgroundColor: "red", color: "white", margin: "5px" }}
-            onClick={() => setSelectedColor("red")}
-          >
-            Red
-          </button>
-          <button
-            style={{ backgroundColor: "yellow", margin: "5px" }}
-            onClick={() => setSelectedColor("yellow")}
-          >
-            Yellow
-          </button>
-          <button
-            style={{ backgroundColor: "green", color: "white", margin: "5px" }}
-            onClick={() => setSelectedColor("green")}
-          >
-            Green
-          </button>
+          <p>Select Color:</p>
+          {["red", "yellow", "green"].map((color) => (
+            <button
+              key={color}
+              style={{
+                backgroundColor: color,
+                color: color === "yellow" ? "black" : "white",
+                margin: "5px",
+              }}
+              onClick={() => setSelectedColor(color)}
+            >
+              {color.charAt(0).toUpperCase() + color.slice(1)}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Canvas for points and clusters */}
       <div
         style={{
           position: "relative",
@@ -223,41 +196,61 @@ const App = () => {
           border: "2px solid black",
           margin: "20px",
           backgroundColor: "black",
+          backgroundImage: `
+            linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255,255,255,0.1) 1px, transparent 1px)
+          `,
+          backgroundSize: `${baseGridSize / zoomLevel}px ${
+            baseGridSize / zoomLevel
+          }px`,
         }}
         onClick={handleCanvasClick}
       >
+        <div
+          style={{
+            position: "absolute",
+            top: "10px",
+            right: "10px",
+            backgroundColor: "rgba(255,255,255,0.8)",
+            padding: "5px 10px",
+            borderRadius: "5px",
+            fontSize: "14px",
+            fontWeight: "bold",
+          }}
+        >
+          Zoom: {Math.round(zoomLevel * 100)}%
+        </div>
+
         {elements.map((element) => {
-          if (element.type === "cluster") {
-            return (
-              <div
-                key={element.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleClusterClick(element.id);
-                }}
-                style={{
-                  position: "absolute",
-                  left: element.x - 25,
-                  top: element.y - 25,
-                  width: "50px",
-                  height: "50px",
-                  cursor: "pointer",
-                }}
-              >
-                {renderDonutChart(element.colorCounts, element.total)}
-              </div>
-            );
-          }
-          return (
+          const scaledX = element.x * zoomLevel;
+          const scaledY = element.y * zoomLevel;
+
+          return element.type === "cluster" ? (
             <div
               key={element.id}
-              onClick={(e) => e.stopPropagation()} // Stop propagation for points
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClusterClick(element.id);
+              }}
               style={{
                 position: "absolute",
-                left: element.x - 5,
-                top: element.y - 5,
-                width: "10px",
-                height: "10px",
+                left: scaledX - 25,
+                top: scaledY - 25,
+                cursor: "pointer",
+              }}
+            >
+              {renderDonutChart(element.colorCounts, element.total)}
+            </div>
+          ) : (
+            <div
+              key={element.id}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                left: scaledX - 5 * zoomLevel,
+                top: scaledY - 5 * zoomLevel,
+                width: `${10 * zoomLevel}px`,
+                height: `${10 * zoomLevel}px`,
                 borderRadius: "50%",
                 backgroundColor: element.color,
               }}
