@@ -192,7 +192,10 @@ const App = () => {
             return (
               <div
                 key={element.id}
-                onClick={() => handleClusterClick(element.id)}
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent event from bubbling up to the canvas
+                  handleClusterClick(element.id);
+                }}
                 style={{
                   position: "absolute",
                   left: element.x - 40,
