@@ -3,23 +3,41 @@ import { v4 as uuidv4 } from "uuid";
 
 const App = () => {
   const [elements, setElements] = useState([]);
+  const [isManualMode, setIsManualMode] = useState(false); // Toggle manual mode
+  const [selectedColor, setSelectedColor] = useState(null); // Track selected color
   const width = 1400;
   const height = 700;
   const distanceThreshold = 100;
 
-  // Add a new point with a random position
-  const addPoint = (color) => {
+  // Add a point at a specific position
+  const addPoint = (color, x, y) => {
     const newPoint = {
       id: uuidv4(),
       type: "point",
-      x: Math.random() * width,
-      y: Math.random() * height,
+      x,
+      y,
       color,
     };
     setElements((prev) => [...prev, newPoint]);
   };
 
-  // Cluster points based on proximity
+  // Handle canvas click for manual point placement
+  const handleCanvasClick = (e) => {
+    if (isManualMode && selectedColor) {
+      const rect = e.target.getBoundingClientRect();
+      const x = e.clientX - rect.left; // Calculate X position relative to canvas
+      const y = e.clientY - rect.top; // Calculate Y position relative to canvas
+      addPoint(selectedColor, x, y);
+    }
+  };
+
+  // Toggle manual mode and show color selection
+  const toggleManualMode = () => {
+    setIsManualMode((prev) => !prev);
+    setSelectedColor(null); // Reset selected color when toggling
+  };
+
+  // Cluster points (same as before)
   const clusterElements = useCallback(() => {
     const points = elements.filter((el) => el.type === "point");
     const clusters = [];
@@ -30,7 +48,6 @@ const App = () => {
         visited.add(point.id);
         const cluster = [point];
 
-        // Find all nearby points within the threshold
         points.forEach((otherPoint, j) => {
           if (i !== j && !visited.has(otherPoint.id)) {
             const dx = point.x - otherPoint.x;
@@ -42,7 +59,6 @@ const App = () => {
           }
         });
 
-        // Create a cluster if there are multiple points
         if (cluster.length > 1) {
           const colorCounts = cluster.reduce((acc, p) => {
             acc[p.color] = (acc[p.color] || 0) + 1;
@@ -60,10 +76,9 @@ const App = () => {
             points: cluster,
             x: clusterX,
             y: clusterY,
-            colorCounts, // Store color counts for display
+            colorCounts,
           });
         } else {
-          // Keep single points as they are
           clusters.push(point);
         }
       }
@@ -91,23 +106,76 @@ const App = () => {
   const formatColorCounts = (colorCounts) => {
     return Object.entries(colorCounts)
       .map(([color, count]) => {
-        const colorCode = color[0].toUpperCase(); // Get first letter of color
+        const colorCode = color[0].toUpperCase();
         return `${count}${colorCode}`;
       })
-      .join(" "); // Join with spaces
+      .join(" ");
   };
 
   return (
     <div>
       {/* Buttons to add points and cluster them */}
       <div style={{ padding: "20px" }}>
-        <button onClick={() => addPoint("red")}>Add Red Point</button>
-        <button onClick={() => addPoint("yellow")}>Add Yellow Point</button>
-        <button onClick={() => addPoint("green")}>Add Green Point</button>
+        <button
+          onClick={() =>
+            addPoint("red", Math.random() * width, Math.random() * height)
+          }
+        >
+          Add Random Red Point
+        </button>
+        <button
+          onClick={() =>
+            addPoint("yellow", Math.random() * width, Math.random() * height)
+          }
+        >
+          Add Random Yellow Point
+        </button>
+        <button
+          onClick={() =>
+            addPoint("green", Math.random() * width, Math.random() * height)
+          }
+        >
+          Add Random Green Point
+        </button>
         <button onClick={clusterElements}>Cluster Points</button>
+        <button onClick={toggleManualMode}>
+          {isManualMode ? "Cancel Manual Mode" : "Add Points Manually"}
+        </button>
       </div>
 
-      {/* Container for points and clusters */}
+      {/* Color selection for manual mode */}
+      {isManualMode && (
+        <div
+          style={{
+            padding: "10px",
+            border: "1px solid #ccc",
+            margin: "10px",
+            width: "200px",
+          }}
+        >
+          <p>Select a color:</p>
+          <button
+            style={{ backgroundColor: "red", color: "white", margin: "5px" }}
+            onClick={() => setSelectedColor("red")}
+          >
+            Red
+          </button>
+          <button
+            style={{ backgroundColor: "yellow", margin: "5px" }}
+            onClick={() => setSelectedColor("yellow")}
+          >
+            Yellow
+          </button>
+          <button
+            style={{ backgroundColor: "green", color: "white", margin: "5px" }}
+            onClick={() => setSelectedColor("green")}
+          >
+            Green
+          </button>
+        </div>
+      )}
+
+      {/* Canvas for points and clusters */}
       <div
         style={{
           position: "relative",
@@ -117,6 +185,7 @@ const App = () => {
           margin: "20px",
           backgroundColor: "black",
         }}
+        onClick={handleCanvasClick}
       >
         {elements.map((element) => {
           if (element.type === "cluster") {
@@ -126,9 +195,9 @@ const App = () => {
                 onClick={() => handleClusterClick(element.id)}
                 style={{
                   position: "absolute",
-                  left: element.x - 40, // Center the cluster
+                  left: element.x - 40,
                   top: element.y - 20,
-                  width: "80px", // Adjust size for text
+                  width: "80px",
                   height: "40px",
                   borderRadius: "10px",
                   backgroundColor: "#fff",
@@ -147,7 +216,6 @@ const App = () => {
               </div>
             );
           }
-          // Render individual points
           return (
             <div
               key={element.id}
