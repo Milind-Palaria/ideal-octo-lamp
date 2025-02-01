@@ -3,9 +3,9 @@ import { v4 as uuidv4 } from "uuid";
 
 const App = () => {
   const [elements, setElements] = useState([]);
-  const width = 800;
-  const height = 600;
-  const distanceThreshold = 50;
+  const width = 1400;
+  const height = 700;
+  const distanceThreshold = 100;
 
   const addPoint = (color) => {
     const newPoint = {
@@ -88,8 +88,9 @@ const App = () => {
           position: "relative",
           width: `${width}px`,
           height: `${height}px`,
-          border: "1px solid black",
+          border: "2px solid black",
           margin: "20px",
+          backgroundColor: "black",
         }}
       >
         {elements.map((element) => {
@@ -102,14 +103,16 @@ const App = () => {
                   position: "absolute",
                   left: element.x - 15,
                   top: element.y - 15,
-                  width: "30px",
-                  height: "30px",
+                  width: "50px",
+                  height: "50px",
                   borderRadius: "50%",
-                  backgroundColor: "#888",
+                  backgroundColor: "#fff",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
+                  color: "#000",
+                  fontWeight: "bold",
                 }}
               >
                 {element.count}
