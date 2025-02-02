@@ -58,7 +58,7 @@ const App = () => {
 
       return [...clusters, ...prev.filter((el) => el.type === "cluster")];
     });
-  }, [distanceThreshold]); // Add any dependencies here
+  }, [distanceThreshold]);
 
   // Automatic clustering/declustering effect
   useEffect(() => {
@@ -69,9 +69,8 @@ const App = () => {
         prev.flatMap((el) => (el.type === "cluster" ? el.points : el))
       );
     }
-  }, [zoomLevel, clusterElements, clusterThreshold]); // Add clusterElements to dependencies
+  }, [zoomLevel, clusterElements, clusterThreshold]);
 
-  // Rest of the code remains the same
   const addPoint = useCallback(
     (color, x, y) => {
       const newPoint = {
@@ -217,7 +216,6 @@ const App = () => {
           ))}
         </div>
       )}
-
       <div
         style={{
           position: "relative",
@@ -226,13 +224,10 @@ const App = () => {
           border: "2px solid black",
           margin: "20px",
           backgroundColor: "black",
-          backgroundImage: `
-            linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(255,255,255,0.1) 1px, transparent 1px)
-          `,
-          backgroundSize: `${baseGridSize / zoomLevel}px ${
-            baseGridSize / zoomLevel
-          }px`,
+          backgroundImage:
+            "url('https://openmaptiles.org/img/home-banner-map.png')", // Replace with your image URL
+          backgroundSize: `${width * zoomLevel}px ${height * zoomLevel}px`, // Scale background with zoom
+          backgroundPosition: "center", // Center the background image
         }}
         onClick={handleCanvasClick}
       >
@@ -252,8 +247,13 @@ const App = () => {
         </div>
 
         {elements.map((element) => {
-          const scaledX = element.x * zoomLevel;
-          const scaledY = element.y * zoomLevel;
+          // Calculate the center of the canvas
+          const centerX = width / 2;
+          const centerY = height / 2;
+
+          // Adjust the scaled positions relative to the center
+          const scaledX = centerX + (element.x - centerX) * zoomLevel;
+          const scaledY = centerY + (element.y - centerY) * zoomLevel;
 
           return element.type === "cluster" ? (
             <div
