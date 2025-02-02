@@ -16,6 +16,7 @@ const ManualModeSelector = ({ selectedColor, setSelectedColor }) => {
       {colors.map((color) => (
         <button
           key={color}
+          onClick={() => setSelectedColor(color)}
           style={{
             backgroundColor: color,
             color: color === "yellow" ? "black" : "white",
@@ -23,7 +24,6 @@ const ManualModeSelector = ({ selectedColor, setSelectedColor }) => {
             border:
               selectedColor === color ? "3px solid #000" : "1px solid #ccc",
           }}
-          onClick={() => setSelectedColor(color)}
         >
           {color.charAt(0).toUpperCase() + color.slice(1)}
         </button>

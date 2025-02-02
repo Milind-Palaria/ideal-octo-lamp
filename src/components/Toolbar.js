@@ -34,9 +34,7 @@ const Toolbar = ({
         Add Random Green
       </button>
       <button onClick={clusterElements}>Cluster Points</button>
-      <button onClick={toggleManualMode}>
-        {toggleManualMode ? "Cancel Manual" : "Add Manually"}
-      </button>
+      <button onClick={toggleManualMode}>Toggle Manual Mode</button>
       <button onClick={handleZoomIn}>Zoom In (+)</button>
       <button onClick={handleZoomOut}>Zoom Out (-)</button>
     </div>

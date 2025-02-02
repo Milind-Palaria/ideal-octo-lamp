@@ -5,97 +5,151 @@ import Canvas from "./components/Canvas";
 import Toolbar from "./components/Toolbar";
 import ManualModeSelector from "./components/ManualModeSelector";
 
+// --- Union-Find (Disjoint Set) Helper Class ---
+class UnionFind {
+  constructor(n) {
+    this.parent = new Array(n);
+    for (let i = 0; i < n; i++) {
+      this.parent[i] = i;
+    }
+  }
+
+  find(i) {
+    if (this.parent[i] !== i) {
+      this.parent[i] = this.find(this.parent[i]);
+    }
+    return this.parent[i];
+  }
+
+  union(i, j) {
+    const rootI = this.find(i);
+    const rootJ = this.find(j);
+    if (rootI !== rootJ) {
+      this.parent[rootJ] = rootI;
+    }
+  }
+}
+
+// --- Main App Component ---
 const App = () => {
-  // === STATE MANAGEMENT ===
+  // State management for elements, manual mode, selected color, and zoom level.
   const [elements, setElements] = useState([]);
   const [isManualMode, setIsManualMode] = useState(false);
   const [selectedColor, setSelectedColor] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
 
-  // Constants
+  // Canvas dimensions and zoom threshold
   const width = 1400;
   const height = 700;
-  const distanceThreshold = 100;
-  const clusterThreshold = 0.8;
+  const clusterThreshold = 0.8; // When zoom is below or equal to this, clustering is applied.
 
-  // === CLUSTERING LOGIC ===
+  // Default radius for points (if not provided)
+  const defaultRadius = 20;
+
+  // --- Helper Function: Euclidean Distance ---
+  const distance = (p1, p2) => {
+    const dx = p1.x - p2.x;
+    const dy = p1.y - p2.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  // --- New Clustering Logic: Colliding Radii ---
   const clusterElements = useCallback(() => {
     setElements((prev) => {
+      // Work only on points (ignore clusters)
       const points = prev.filter((el) => el.type === "point");
-      const clusters = [];
-      const visited = new Set();
+      const n = points.length;
+      if (n === 0) return prev;
 
-      points.forEach((point, i) => {
-        if (!visited.has(point.id)) {
-          visited.add(point.id);
-          const cluster = [point];
+      // Create a union-find structure for n points.
+      const uf = new UnionFind(n);
 
-          points.forEach((otherPoint, j) => {
-            if (i !== j && !visited.has(otherPoint.id)) {
-              const dx = point.x - otherPoint.x;
-              const dy = point.y - otherPoint.y;
-              if (Math.sqrt(dx * dx + dy * dy) <= distanceThreshold) {
-                cluster.push(otherPoint);
-                visited.add(otherPoint.id);
-              }
-            }
-          });
-
-          // Create a cluster if more than one point is close
-          if (cluster.length > 1) {
-            const colorCounts = cluster.reduce((acc, p) => {
-              acc[p.color] = (acc[p.color] || 0) + 1;
-              return acc;
-            }, {});
-            clusters.push({
-              id: uuidv4(),
-              type: "cluster",
-              points: cluster,
-              x: cluster.reduce((sum, p) => sum + p.x, 0) / cluster.length,
-              y: cluster.reduce((sum, p) => sum + p.y, 0) / cluster.length,
-              colorCounts,
-              total: cluster.length,
-            });
-          } else {
-            clusters.push(point);
+      // Compare every pair of points. Two points are connected if their circles (radius) touch.
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const r1 = points[i].radius || defaultRadius;
+          const r2 = points[j].radius || defaultRadius;
+          if (distance(points[i], points[j]) <= r1 + r2) {
+            uf.union(i, j);
           }
+        }
+      }
+
+      // Group points by their union-find root.
+      const groups = {};
+      for (let i = 0; i < n; i++) {
+        const root = uf.find(i);
+        if (!groups[root]) {
+          groups[root] = [];
+        }
+        groups[root].push(points[i]);
+      }
+
+      // Create new elements: if a group has only one point, leave it; otherwise, form a cluster.
+      const newElements = [];
+      Object.values(groups).forEach((group) => {
+        if (group.length === 1) {
+          newElements.push(group[0]);
+        } else {
+          // Calculate the cluster's center by averaging positions.
+          const clusterX =
+            group.reduce((sum, p) => sum + p.x, 0) / group.length;
+          const clusterY =
+            group.reduce((sum, p) => sum + p.y, 0) / group.length;
+          // Count colors in the cluster.
+          const colorCounts = group.reduce((acc, p) => {
+            acc[p.color] = (acc[p.color] || 0) + 1;
+            return acc;
+          }, {});
+          newElements.push({
+            id: uuidv4(),
+            type: "cluster",
+            points: group,
+            x: clusterX,
+            y: clusterY,
+            colorCounts,
+            total: group.length,
+          });
         }
       });
 
-      // Return new elements array with clusters replacing groups of points.
-      // Also include any pre-existing clusters (if needed)
-      return [...clusters, ...prev.filter((el) => el.type === "cluster")];
+      // Optionally, preserve any pre-existing clusters.
+      const otherElements = prev.filter((el) => el.type === "cluster");
+      return [...newElements, ...otherElements];
     });
-  }, [distanceThreshold]);
+  }, [defaultRadius]);
 
-  // === EFFECT: AUTOMATIC CLUSTERING/DECLUSTERING BASED ON ZOOM ===
+  // --- Effect: Re-cluster based on zoom level ---
   useEffect(() => {
     if (zoomLevel <= clusterThreshold) {
       clusterElements();
     } else {
-      // Replace clusters with individual points
+      // When zoomed in, display individual points.
       setElements((prev) =>
         prev.flatMap((el) => (el.type === "cluster" ? el.points : el))
       );
     }
   }, [zoomLevel, clusterElements, clusterThreshold]);
 
-  // === ADDING POINTS ===
+  // --- Adding Points ---
+  // When a point is added, assign it the default radius.
   const addPoint = useCallback(
     (color, x, y) => {
       const newPoint = {
         id: uuidv4(),
         type: "point",
-        x: x / zoomLevel, // un-scale to match the base coordinate system
+        x: x / zoomLevel, // unscale the coordinate to the base system
         y: y / zoomLevel,
         color,
+        radius: defaultRadius,
       };
       setElements((prev) => [...prev, newPoint]);
     },
-    [zoomLevel]
+    [zoomLevel, defaultRadius]
   );
 
-  // === EVENT HANDLERS ===
+  // --- Event Handlers ---
+  // Handle clicks on the canvas when manual mode is active.
   const handleCanvasClick = useCallback(
     (e) => {
       if (isManualMode && selectedColor && e.target === e.currentTarget) {
@@ -108,8 +162,14 @@ const App = () => {
     [isManualMode, selectedColor, addPoint]
   );
 
+  // Toggle manual mode and reset the selected color.
+  const toggleManualMode = useCallback(() => {
+    setIsManualMode((prev) => !prev);
+    setSelectedColor(null);
+  }, []);
+
+  // When a cluster is clicked, break it apart to reveal its individual points.
   const handleClusterClick = useCallback((clusterId) => {
-    // When a cluster is clicked, de-cluster it.
     setElements((prev) =>
       prev.flatMap((el) =>
         el.type === "cluster" && el.id === clusterId
@@ -119,12 +179,7 @@ const App = () => {
     );
   }, []);
 
-  const toggleManualMode = useCallback(() => {
-    setIsManualMode((prev) => !prev);
-    setSelectedColor(null);
-  }, []);
-
-  // === ZOOM HANDLERS ===
+  // Zoom in and out
   const handleZoomIn = useCallback(
     () => setZoomLevel((prev) => Math.min(prev + 0.1, 2)),
     []
@@ -134,7 +189,7 @@ const App = () => {
     []
   );
 
-  // === RENDER ===
+  // --- Render ---
   return (
     <div>
       <Toolbar
@@ -159,6 +214,7 @@ const App = () => {
         zoomLevel={zoomLevel}
         handleCanvasClick={handleCanvasClick}
         handleClusterClick={handleClusterClick}
+        isManualMode={isManualMode}
       />
     </div>
   );

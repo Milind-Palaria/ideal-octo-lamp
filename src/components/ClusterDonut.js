@@ -2,11 +2,9 @@
 import React from "react";
 
 const ClusterDonut = ({ colorCounts, total }) => {
-  // Create the donut chart with one circle per color segment.
-  const segments = Object.entries(colorCounts);
   return (
     <svg width="50" height="50" viewBox="0 0 50 50">
-      {segments.reduce((acc, [color, count], i, arr) => {
+      {Object.entries(colorCounts).reduce((acc, [color, count], i, arr) => {
         const percentage = (count / total) * 100;
         const offset = arr
           .slice(0, i)
