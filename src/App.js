@@ -13,14 +13,12 @@ class UnionFind {
       this.parent[i] = i;
     }
   }
-
   find(i) {
     if (this.parent[i] !== i) {
       this.parent[i] = this.find(this.parent[i]);
     }
     return this.parent[i];
   }
-
   union(i, j) {
     const rootI = this.find(i);
     const rootJ = this.find(j);
@@ -30,126 +28,152 @@ class UnionFind {
   }
 }
 
-// --- Main App Component ---
 const App = () => {
-  // State management for elements, manual mode, selected color, and zoom level.
   const [elements, setElements] = useState([]);
   const [isManualMode, setIsManualMode] = useState(false);
   const [selectedColor, setSelectedColor] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
 
-  // Canvas dimensions and zoom threshold
+  // Canvas dimensions
   const width = 1400;
   const height = 700;
-  const clusterThreshold = 0.8; // When zoom is below or equal to this, clustering is applied.
 
-  // Default radius for points (if not provided)
-  const defaultRadius = 20;
+  // When zoom level is below or equal to this, clustering is active.
+  const clusterThreshold = 0.8;
 
-  // --- Helper Function: Euclidean Distance ---
-  const distance = (p1, p2) => {
-    const dx = p1.x - p2.x;
-    const dy = p1.y - p2.y;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
+  // Intrinsic radii (in data coordinates):
+  const defaultPointRadius = 20; // For individual points
+  const fixedClusterRadius = 40; // Desired on-screen cluster radius (constant)
 
-  // --- New Clustering Logic: Colliding Radii ---
+  // --- CLUSTERING LOGIC ---
   const clusterElements = useCallback(() => {
     setElements((prev) => {
-      // Work only on points (ignore clusters)
-      const points = prev.filter((el) => el.type === "point");
-      const n = points.length;
+      // Consider both individual points and any existing clusters.
+      const items = prev.filter(
+        (el) => el.type === "point" || el.type === "cluster"
+      );
+      const n = items.length;
       if (n === 0) return prev;
 
-      // Create a union-find structure for n points.
-      const uf = new UnionFind(n);
+      // Compute an effective radius (in data coordinates) for each item:
+      // • For a point, it is its intrinsic radius.
+      // • For a cluster, we want its on-screen radius to be fixed;
+      //   so we set its effective radius = fixedClusterRadius / zoomLevel.
+      const effectiveRadius = (item) => {
+        if (item.type === "point") {
+          return item.radius || defaultPointRadius;
+        } else {
+          return fixedClusterRadius / zoomLevel;
+        }
+      };
 
-      // Compare every pair of points. Two points are connected if their circles (radius) touch.
+      // Create union-find structure to group overlapping items.
+      const uf = new UnionFind(n);
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
-          const r1 = points[i].radius || defaultRadius;
-          const r2 = points[j].radius || defaultRadius;
-          if (distance(points[i], points[j]) <= r1 + r2) {
+          const r1 = effectiveRadius(items[i]);
+          const r2 = effectiveRadius(items[j]);
+          const dx = items[i].x - items[j].x;
+          const dy = items[i].y - items[j].y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d <= r1 + r2) {
             uf.union(i, j);
           }
         }
       }
 
-      // Group points by their union-find root.
+      // Group items by their union-find root.
       const groups = {};
       for (let i = 0; i < n; i++) {
         const root = uf.find(i);
         if (!groups[root]) {
           groups[root] = [];
         }
-        groups[root].push(points[i]);
+        groups[root].push(items[i]);
       }
 
-      // Create new elements: if a group has only one point, leave it; otherwise, form a cluster.
       const newElements = [];
       Object.values(groups).forEach((group) => {
         if (group.length === 1) {
+          // Single item remains as is.
           newElements.push(group[0]);
         } else {
-          // Calculate the cluster's center by averaging positions.
-          const clusterX =
-            group.reduce((sum, p) => sum + p.x, 0) / group.length;
-          const clusterY =
-            group.reduce((sum, p) => sum + p.y, 0) / group.length;
-          // Count colors in the cluster.
-          const colorCounts = group.reduce((acc, p) => {
-            acc[p.color] = (acc[p.color] || 0) + 1;
-            return acc;
-          }, {});
+          // Merge items into a new cluster.
+          // Flatten any existing clusters into their individual points.
+          const points = group.flatMap((item) =>
+            item.type === "point" ? [item] : item.points
+          );
+          const totalPoints = points.length;
+
+          // Compute the new cluster's center (average of item centers)
+          const centerX =
+            group.reduce((sum, item) => sum + item.x, 0) / group.length;
+          const centerY =
+            group.reduce((sum, item) => sum + item.y, 0) / group.length;
+
+          // Aggregate color counts.
+          const colorCounts = {};
+          group.forEach((item) => {
+            if (item.type === "point") {
+              colorCounts[item.color] = (colorCounts[item.color] || 0) + 1;
+            } else {
+              Object.entries(item.colorCounts).forEach(([color, count]) => {
+                colorCounts[color] = (colorCounts[color] || 0) + count;
+              });
+            }
+          });
+
+          // Set the new cluster’s intrinsic radius so that, when rendered,
+          // its on-screen radius is fixed:
+          //   intrinsicClusterRadius * zoomLevel = fixedClusterRadius
+          // Thus, intrinsicClusterRadius = fixedClusterRadius / zoomLevel.
           newElements.push({
             id: uuidv4(),
             type: "cluster",
-            points: group,
-            x: clusterX,
-            y: clusterY,
+            points, // all individual points in the cluster
+            x: centerX,
+            y: centerY,
+            radius: fixedClusterRadius / zoomLevel, // intrinsic (data) radius for clusters
             colorCounts,
-            total: group.length,
+            total: totalPoints,
           });
         }
       });
 
-      // Optionally, preserve any pre-existing clusters.
-      const otherElements = prev.filter((el) => el.type === "cluster");
-      return [...newElements, ...otherElements];
+      return newElements;
     });
-  }, [defaultRadius]);
+  }, [defaultPointRadius, fixedClusterRadius, zoomLevel]);
 
-  // --- Effect: Re-cluster based on zoom level ---
+  // --- EFFECT: Cluster or decluster based on zoom level ---
   useEffect(() => {
     if (zoomLevel <= clusterThreshold) {
       clusterElements();
     } else {
-      // When zoomed in, display individual points.
+      // When zoomed in, flatten clusters to show individual points.
       setElements((prev) =>
         prev.flatMap((el) => (el.type === "cluster" ? el.points : el))
       );
     }
   }, [zoomLevel, clusterElements, clusterThreshold]);
 
-  // --- Adding Points ---
-  // When a point is added, assign it the default radius.
+  // --- ADDING POINTS ---
   const addPoint = useCallback(
     (color, x, y) => {
       const newPoint = {
         id: uuidv4(),
         type: "point",
-        x: x / zoomLevel, // unscale the coordinate to the base system
+        // Convert click coordinates (screen) to data coordinates.
+        x: x / zoomLevel,
         y: y / zoomLevel,
         color,
-        radius: defaultRadius,
+        radius: defaultPointRadius, // intrinsic radius remains constant
       };
       setElements((prev) => [...prev, newPoint]);
     },
-    [zoomLevel, defaultRadius]
+    [zoomLevel, defaultPointRadius]
   );
 
-  // --- Event Handlers ---
-  // Handle clicks on the canvas when manual mode is active.
+  // --- EVENT HANDLERS ---
   const handleCanvasClick = useCallback(
     (e) => {
       if (isManualMode && selectedColor && e.target === e.currentTarget) {
@@ -162,13 +186,12 @@ const App = () => {
     [isManualMode, selectedColor, addPoint]
   );
 
-  // Toggle manual mode and reset the selected color.
   const toggleManualMode = useCallback(() => {
     setIsManualMode((prev) => !prev);
     setSelectedColor(null);
   }, []);
 
-  // When a cluster is clicked, break it apart to reveal its individual points.
+  // When a cluster is clicked, expand it (break it into its individual points).
   const handleClusterClick = useCallback((clusterId) => {
     setElements((prev) =>
       prev.flatMap((el) =>
@@ -179,17 +202,17 @@ const App = () => {
     );
   }, []);
 
-  // Zoom in and out
+  // --- ZOOM HANDLERS ---
   const handleZoomIn = useCallback(
     () => setZoomLevel((prev) => Math.min(prev + 0.1, 2)),
     []
   );
+  // Updated lower bound from 0.5 to 0.1
   const handleZoomOut = useCallback(
-    () => setZoomLevel((prev) => Math.max(prev - 0.1, 0.5)),
+    () => setZoomLevel((prev) => Math.max(prev - 0.1, 0.1)),
     []
   );
 
-  // --- Render ---
   return (
     <div>
       <Toolbar
