@@ -28,7 +28,7 @@ const Canvas = ({
         margin: "20px",
         backgroundColor: "black",
         backgroundImage:
-          "url('https://openmaptiles.org/img/home-banner-map.png')", // Replace with your background URL
+          "url('https://ontheworldmap.com/india/city/delhi/detailed-map-of-delhi.jpg')",
         backgroundSize: `${width * zoomLevel}px ${height * zoomLevel}px`,
         backgroundPosition: "center",
       }}
@@ -82,7 +82,6 @@ const Canvas = ({
                   width: "100%",
                   height: "100%",
                   borderRadius: "50%",
-                  border: "3px solid black",
                   position: "absolute",
                   top: 0,
                   left: 0,
@@ -135,7 +134,6 @@ const Canvas = ({
                   width: "100%",
                   height: "100%",
                   borderRadius: "50%",
-                  border: "2px solid black",
                   position: "absolute",
                   top: 0,
                   left: 0,
